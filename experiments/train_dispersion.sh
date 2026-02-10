@@ -23,12 +23,13 @@ evaluate_lang_directions() {
     local BASE_SYS="$2"     # Base system directory
 
     # Define language directions (can customize or pass as parameter if needed)
-    local LANG_DIRECTIONS=("en-de" "en-es" "en-ru" "en-zh" "en-fr" "en-nl" "en-it" "en-pt" "en-ko") # tower-1 langs
+    # local LANG_DIRECTIONS=("en-de" "en-es" "en-ru" "en-zh" "en-fr" "en-nl" "en-it" "en-pt" "en-ko") # tower-1 langs
+    local LANG_DIRECTIONS=("en-ru" "en-zh") # testing
 
     # Define base source and target directories
-    local BASE_SRC="/gpfs/work4/0/gus20642/dwu18/project/value_finetuning/src/llama_recipes/customer_data/${TEST_DATASET}/test"
+    local BASE_SRC="/gpfs/work4/0/gus20642/dwu18/project/dispersion4Q/src/llama_recipes/customer_data/${TEST_DATASET}/test"
     local BASE_TGT=$BASE_SRC
-    # local BASE_TGT="/gpfs/work4/0/gus20642/dwu18/project/value_finetuning/src/llama_recipes/customer_data/${TEST_DATASET}/test"
+    # local BASE_TGT="/gpfs/work4/0/gus20642/dwu18/project/dispersion4Q/src/llama_recipes/customer_data/${TEST_DATASET}/test"
     
 
     # Loop through each language direction
@@ -93,7 +94,7 @@ python -m llama_recipes.finetuning --use_peft --peft_method lora \
         --batch_size_training 32 \
         --val_batch_size 32 \
         --gradient_accumulation_steps 8 \
-        --lang_pairs "en-de,en-fr,en-nl,en-it,en-es,en-pt,en-ko,en-ru,en-zh" \
+        --lang_pairs "en-ru,en-zh" \
         --use_wandb
 
 # Test
@@ -105,7 +106,7 @@ for EPOCH in 0; do
             --val_batch_size 8 \
             --do_sample False \
             --output_dir ${BASE_SYS} \
-            --lang_pairs en-de,en-fr,en-nl,en-it,en-es,en-pt,en-ko,en-ru,en-zh \
+            --lang_pairs en-ru,en-zh \
             --beam_size 5
     evaluate_lang_directions ${TEST_DATASET} ${BASE_SYS}
 done
