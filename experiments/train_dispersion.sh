@@ -86,7 +86,7 @@ echo "SCORES: scores/$BASE_MODEL/dispersion4Q/${SETTING}/0/wmt-qe-22-test"
 python -m llama_recipes.finetuning --use_peft --peft_method lora \
         --model_name Unbabel/$BASE_MODEL \
         --output_dir $CKP_DIR/$BASE_MODEL/${SETTING} \
-        --dataset calibration \
+        --dataset flores_dataset \
         --batching_strategy padding \
         --num_epochs 1 \
         --lr $LR \
