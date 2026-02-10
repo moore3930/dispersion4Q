@@ -13,7 +13,6 @@
 #SBATCH -e /gpfs/work4/0/gus20642/dwu18/log/out.dispersion.%j.e
 
 source activate py38cuda11
-# source activate py39
 
 export HF_HUB_CACHE=/gpfs/work4/0/gus20642/dwu18/cache
 export PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python
@@ -69,35 +68,26 @@ evaluate_lang_directions() {
 
 ################## MAIN ##################
 
-ALPHA=$1
-BETA=$2
-GAMA=$3
 LR=$4
 SUBSET=$5
-LIST_SIEZ=$6
-METRIC=$7
 BASE_MODEL=$8
 
-echo "ALPHA is set to: $ALPHA"
-echo "BETA is set to: $BETA"
-echo "GAMA is set to: $GAMA"
 echo "LR is set to: $LR"
 echo "Subset is set to: $SUBSET"
-echo "List size is set to: $LIST_SIEZ"
 echo "Base_model is set to: $BASE_MODEL"
 
-SETTING=${ALPHA}-${BETA}-${GAMA}-${LR}-${METRIC}-test
+SETTING=${LR}-test
 TEST_DATASET=wmt24_testset
-CKP_DIR=/gpfs/work4/0/gus20642/dwu18/project/calibrating-llm-mt/experiments/checkpoints
+CKP_DIR=/gpfs/work4/0/gus20642/dwu18/project/dispersion4Q/experiments/checkpoints
 
-echo "CKP: $CKP_DIR/$BASE_MODEL/calibration/${SUBSET}/${SETTING}"
-echo "RESULTS: results/$BASE_MODEL/calibration/${TEST_DATASET}/${SUBSET}/${SETTING}-beam5"
-echo "SCORES: scores/$BASE_MODEL/calibration/${SUBSET}/${SETTING}/0/wmt-qe-22-test"
+echo "CKP: $CKP_DIR/$BASE_MODEL/dispersion4Q/${SUBSET}/${SETTING}"
+echo "RESULTS: results/$BASE_MODEL/dispersion4Q/${TEST_DATASET}/${SUBSET}/${SETTING}-beam5"
+echo "SCORES: scores/$BASE_MODEL/dispersion4Q/${SUBSET}/${SETTING}/0/wmt-qe-22-test"
 
 # Train
 python -m llama_recipes.finetuning --use_peft --peft_method lora \
         --model_name Unbabel/$BASE_MODEL \
-        --output_dir $CKP_DIR/$BASE_MODEL/calibration/${SUBSET}/${SETTING} \
+        --output_dir $CKP_DIR/$BASE_MODEL/${SUBSET}/${SETTING} \
         --dataset calibration \
         --subset_name ${SUBSET} \
         --batching_strategy padding \
@@ -111,9 +101,9 @@ python -m llama_recipes.finetuning --use_peft --peft_method lora \
 
 # Test
 for EPOCH in 0; do
-    BASE_SYS=results/$BASE_MODEL/calibration/${TEST_DATASET}/${SUBSET}/${SETTING}-beam5/${EPOCH}
+    BASE_SYS=results/$BASE_MODEL/${TEST_DATASET}/${SUBSET}/${SETTING}-beam5/${EPOCH}
     python inference_formal.py --model_name Unbabel/$BASE_MODEL \
-            --peft_model $CKP_DIR/$BASE_MODEL/calibration/${SUBSET}/${SETTING}/${EPOCH} \
+            --peft_model $CKP_DIR/$BASE_MODEL/${SUBSET}/${SETTING}/${EPOCH} \
             --dataset ${TEST_DATASET} \
             --val_batch_size 8 \
             --do_sample False \
