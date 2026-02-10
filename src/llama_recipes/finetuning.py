@@ -162,7 +162,7 @@ def main(**kwargs):
         processor.tokenizer.padding_side = "right"
         model.supports_gradient_checkpointing = True
         model.language_model.supports_gradient_checkpointing = True
-    elif config.model_type == "llama":
+    elif config.model_type in ["llama", "mistral"]:
         is_vision = False
         model = LlamaForCausalLM.from_pretrained(
             train_config.model_name,
