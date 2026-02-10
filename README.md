@@ -32,4 +32,4 @@ cd experiments
 sh run.sh
 ```
 
-You will find results in ./experiments/results
+You will find results, inculding your hypos for testing data (WMT24++) and quality scores across multiple metrics, in ./experiments/results
