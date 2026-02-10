@@ -1,4 +1,4 @@
-# Calibrating Translation Decoding with Quality Estimation on LLMs
+# Dispersion4Q
 
 Official implementation based on the PyTorch and Hugging Face Transformers libraries.
 
