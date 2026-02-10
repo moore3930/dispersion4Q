@@ -68,28 +68,25 @@ evaluate_lang_directions() {
 
 ################## MAIN ##################
 
-LR=$4
-SUBSET=$5
-BASE_MODEL=$8
+LR=$1
+BASE_MODEL=$2
 
 echo "LR is set to: $LR"
-echo "Subset is set to: $SUBSET"
 echo "Base_model is set to: $BASE_MODEL"
 
 SETTING=${LR}-test
 TEST_DATASET=wmt24_testset
 CKP_DIR=/gpfs/work4/0/gus20642/dwu18/project/dispersion4Q/experiments/checkpoints
 
-echo "CKP: $CKP_DIR/$BASE_MODEL/dispersion4Q/${SUBSET}/${SETTING}"
-echo "RESULTS: results/$BASE_MODEL/dispersion4Q/${TEST_DATASET}/${SUBSET}/${SETTING}-beam5"
-echo "SCORES: scores/$BASE_MODEL/dispersion4Q/${SUBSET}/${SETTING}/0/wmt-qe-22-test"
+echo "CKP: $CKP_DIR/$BASE_MODEL/dispersion4Q/${SETTING}"
+echo "RESULTS: results/$BASE_MODEL/dispersion4Q/${TEST_DATASET}/${SETTING}-beam5"
+echo "SCORES: scores/$BASE_MODEL/dispersion4Q/${SETTING}/0/wmt-qe-22-test"
 
 # Train
 python -m llama_recipes.finetuning --use_peft --peft_method lora \
         --model_name Unbabel/$BASE_MODEL \
-        --output_dir $CKP_DIR/$BASE_MODEL/${SUBSET}/${SETTING} \
+        --output_dir $CKP_DIR/$BASE_MODEL/${SETTING} \
         --dataset calibration \
-        --subset_name ${SUBSET} \
         --batching_strategy padding \
         --num_epochs 1 \
         --lr $LR \
@@ -101,9 +98,9 @@ python -m llama_recipes.finetuning --use_peft --peft_method lora \
 
 # Test
 for EPOCH in 0; do
-    BASE_SYS=results/$BASE_MODEL/${TEST_DATASET}/${SUBSET}/${SETTING}-beam5/${EPOCH}
+    BASE_SYS=results/$BASE_MODEL/${TEST_DATASET}/${SETTING}-beam5/${EPOCH}
     python inference_formal.py --model_name Unbabel/$BASE_MODEL \
-            --peft_model $CKP_DIR/$BASE_MODEL/${SUBSET}/${SETTING}/${EPOCH} \
+            --peft_model $CKP_DIR/$BASE_MODEL/${SETTING}/${EPOCH} \
             --dataset ${TEST_DATASET} \
             --val_batch_size 8 \
             --do_sample False \
