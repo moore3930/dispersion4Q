@@ -86,7 +86,7 @@ echo "Subset is set to: $SUBSET"
 echo "List size is set to: $LIST_SIEZ"
 echo "Base_model is set to: $BASE_MODEL"
 
-SETTING=${ALPHA}-${BETA}-${GAMA}-${LR}-${METRIC}-debug2
+SETTING=${ALPHA}-${BETA}-${GAMA}-${LR}-${METRIC}-test
 TEST_DATASET=wmt24_testset
 CKP_DIR=/gpfs/work4/0/gus20642/dwu18/project/calibrating-llm-mt/experiments/checkpoints
 
@@ -95,24 +95,18 @@ echo "RESULTS: results/$BASE_MODEL/calibration/${TEST_DATASET}/${SUBSET}/${SETTI
 echo "SCORES: scores/$BASE_MODEL/calibration/${SUBSET}/${SETTING}/0/wmt-qe-22-test"
 
 # Train
-python -m llama_recipes.calibration --use_peft --peft_method lora \
+python -m llama_recipes.finetuning --use_peft --peft_method lora \
         --model_name Unbabel/$BASE_MODEL \
         --output_dir $CKP_DIR/$BASE_MODEL/calibration/${SUBSET}/${SETTING} \
         --dataset calibration \
         --subset_name ${SUBSET} \
-        --metric ${METRIC} \
         --batching_strategy padding \
         --num_epochs 1 \
         --lr $LR \
         --batch_size_training 32 \
         --val_batch_size 32 \
         --gradient_accumulation_steps 8 \
-        --alpha $ALPHA \
-        --beta $BETA \
-	    --gama $GAMA \
         --lang_pairs "en-de,en-fr,en-nl,en-it,en-es,en-pt,en-ko,en-ru,en-zh" \
-        --listwise_loss \
-        --list_size $LIST_SIEZ \
         --use_wandb
 
 # Test
