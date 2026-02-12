@@ -69,7 +69,9 @@ class train_config:
     num_return_samples: int = 10
     num_sampling_size: int = 1
     subset_size: int = -1
-    metric: str = "kiwi-xxl.score"
+    metric: str = "kiwi-xxl.score",
+    dispersion_weight: float = 0.0
+    dispersion_feature_type: str = "embeddings"
 
 
 

@@ -12,6 +12,13 @@ import contextlib
 import torch.nn.functional as F
 
 
+from ledoh_torch import (
+    circular_variance,
+    minimum_acos_distance,
+    SlicedSphereDispersion,
+    AxisAlignedSlicedSphereDispersion
+)
+
 import torch
 import torch.cuda.nccl as nccl
 import torch.distributed as dist
@@ -810,6 +817,17 @@ def calibration_evaluation(model, train_config, loss_module, eval_dataloader, lo
 
     return eval_ppl, eval_epoch_loss, val_step_loss, val_step_perplexity
 
+def compute_dispersed_loss(model, disp_reg, feature_type='embeddings'):
+    features = None
+    if feature_type == 'embeddings':
+        features = model.base_model.model.model.embed_tokens.weight
+    else:
+        raise ValueError(f"Unsupported feature type: {feature_type}")
+
+    assert features is not None, "dispersion features cannot be None"
+    features = features / features.norm(dim=-1, keepdim=True)
+
+    return disp_reg(features), {"disperse_features": features.detach().clone()}
 
 def train(model, train_dataloader, eval_dataloader, tokenizer, optimizer, lr_scheduler, gradient_accumulation_steps,
           train_config, fsdp_config=None, local_rank=None, rank=None, wandb_run=None):
@@ -838,6 +856,8 @@ def train(model, train_dataloader, eval_dataloader, tokenizer, optimizer, lr_sch
     if train_config.enable_fsdp:
         world_size = int(os.environ["WORLD_SIZE"])
 
+    disp_reg = AxisAlignedSlicedSphereDispersion()
+
     autocast = torch.cuda.amp.autocast if train_config.use_fp16 else nullcontext
     train_prep = []
     train_loss = []
@@ -850,8 +870,11 @@ def train(model, train_dataloader, eval_dataloader, tokenizer, optimizer, lr_sch
         metrics_filename = f"{train_config.output_dir}/metrics_data_{local_rank}-{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.json"
         train_step_perplexity = []
         train_step_loss = []
+        train_step_sph_var = []
+
         val_step_loss = []
         val_step_perplexity = []
+        val_step_sph_var = []
 
     epoch_times = []
     checkpoint_times = []
@@ -895,11 +918,18 @@ def train(model, train_dataloader, eval_dataloader, tokenizer, optimizer, lr_sch
                                 batch[key] = batch[key].to('cuda:0')
                     with autocast():
                         loss = model(**batch).loss
+                        if train_config.dispersion_weight > 0.0:
+                            dispersed_loss, disp_log = compute_dispersed_loss(model, disp_reg, feature_type=train_config.dispersion_feature_type)
+                            if torch.any(torch.isnan(dispersed_loss)):
+                                print("Dispersed loss contains NaN values. Skip the batch")
+                            else:
+                                loss += train_config.dispersion_weight * dispersed_loss.mean()
                     total_loss += loss.detach().float()
                     loss = loss / gradient_accumulation_steps
                     if train_config.save_metrics:
                         train_step_loss.append(loss.detach().float().item())
                         train_step_perplexity.append(float(torch.exp(loss.detach().float())))
+                        train_step_sph_var.append(float(circular_variance(disp_log["features"].detach().float().item())) if disp_log is not None else None)
                     if train_config.use_fp16:
                         # if fp16 is enabled, use gradient scaler to handle gradient update
                         scaler.scale(loss).backward()
