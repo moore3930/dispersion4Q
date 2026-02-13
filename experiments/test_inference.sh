@@ -21,9 +21,15 @@ PROJECT_DIR="${SUBMIT_DIR}"
 cd "${PROJECT_DIR}"
 source "${PROJECT_DIR}/.venv/bin/activate"
 
-export HF_HUB_CACHE="${HF_HUB_CACHE:-${PROJECT_DIR}/.cache/huggingface}"
+unset HF_HOME HF_HUB_CACHE TRANSFORMERS_CACHE XDG_CACHE_HOME TORCH_HOME
 export PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python
-mkdir -p "${HF_HUB_CACHE}"
+
+if [[ -z "${HF_TOKEN:-}" ]]; then
+    echo "ERROR: HF_TOKEN is required for gated model access (Unbabel/XCOMET-XXL)." >&2
+    echo "Run with: sbatch --export=ALL,HF_TOKEN=hf_xxx experiments/test_inference.sh <args...>" >&2
+    exit 1
+fi
+export HUGGING_FACE_HUB_TOKEN="${HF_TOKEN}"
 
 evaluate_lang_directions() {
     # Parameters
@@ -60,7 +66,9 @@ evaluate_lang_directions() {
 
         # Run COMET scoring
         comet-score -s $SRC_FILE -t $SYS_FILE -r $TGT_FILE --model Unbabel/wmt22-comet-da >> $COMET_SCORE_FILE
-        comet-score -s $SRC_FILE -t $SYS_FILE --model Unbabel/XCOMET-XXL >> $XCOMET_SCORE_FILE
+        if ! comet-score -s $SRC_FILE -t $SYS_FILE --model Unbabel/XCOMET-XXL >> $XCOMET_SCORE_FILE; then
+            echo "[WARN] XCOMET-XXL failed for ${LANG_DIR} (likely gated-access/token permissions). Continuing." >&2
+        fi
         comet-score -s $SRC_FILE -t $SYS_FILE --model Unbabel/wmt22-cometkiwi-da >> $KIWI_SCORE_FILE
         comet-score -s $SRC_FILE -t $SYS_FILE --model Unbabel/wmt23-cometkiwi-da-xl >> $KIWI_XL_SCORE_FILE
         comet-score -s $SRC_FILE -t $SYS_FILE --model Unbabel/wmt23-cometkiwi-da-xxl >> $KIWI_XXL_SCORE_FILE

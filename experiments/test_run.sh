@@ -21,8 +21,7 @@ PROJECT_DIR="${SUBMIT_DIR}"
 cd "${PROJECT_DIR}/experiments"
 source "${PROJECT_DIR}/.venv/bin/activate"
 
-export HF_HUB_CACHE="${HF_HUB_CACHE:-${PROJECT_DIR}/.cache/huggingface}"
+unset HF_HOME HF_HUB_CACHE TRANSFORMERS_CACHE XDG_CACHE_HOME TORCH_HOME
 export PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python
-mkdir -p "${HF_HUB_CACHE}"
 
 python test_pipeline.py

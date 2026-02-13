@@ -36,7 +36,10 @@ You can find datasets here:
 You can reproduce the results of applying calibration on TowerInstruct-Mistral-7B in Table-1. Training will takes around 1 GPU hour on H100. 
 ```
 cd experiments
-sh run.sh
+export HF_TOKEN=hf_xxx_your_token
+bash run.sh
 ```
 
-You will find results, inculding your hypos for testing data (WMT24++) and quality scores across multiple metrics, in ./experiments/results
+`HF_TOKEN` is required for gated model access (e.g. `Unbabel/XCOMET-XXL`) in Slurm jobs.
+
+You will find results, including your hypos for testing data (WMT24++) and quality scores across multiple metrics, in `./results`.
