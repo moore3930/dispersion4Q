@@ -10,10 +10,17 @@ All experiments are tested with Python 3.8, torch 2.4.0
 pip install -r requirements.txt
 ```
 
+### UPD: Install all dependencies with uv:
+```
+uv venv .venv --python 3.8
+source .venv/bin/activate
+uv sync
+```
+
 ### Install Codebase
 ```
 cd dispersion4Q
-pip install -U pip setuptools
+pip install -U pip setuptools==69.5.1
 pip install -e .
 ```
 

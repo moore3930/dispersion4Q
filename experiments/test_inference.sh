@@ -9,14 +9,21 @@
 #SBATCH --partition=gpu_h100
 #SBATCH --time=01-00:00:00
 
-#SBATCH -o /gpfs/work4/0/gus20642/dwu18/log/out.calibration.%j.o
-#SBATCH -e /gpfs/work4/0/gus20642/dwu18/log/out.calibration.%j.e
+#SBATCH -o slurm-%j.out
+#SBATCH -e slurm-%j.err
 
-source activate py38cuda11
-# source activate py39
+set -euo pipefail
 
-export HF_HUB_CACHE=/gpfs/work4/0/gus20642/dwu18/cache
+SUBMIT_DIR="${SLURM_SUBMIT_DIR:-$(pwd)}"
+PROJECT_DIR="${SUBMIT_DIR}"
+[[ -f "${PROJECT_DIR}/pyproject.toml" ]] || PROJECT_DIR="$(cd "${PROJECT_DIR}/.." && pwd)"
+
+cd "${PROJECT_DIR}"
+source "${PROJECT_DIR}/.venv/bin/activate"
+
+export HF_HUB_CACHE="${HF_HUB_CACHE:-${PROJECT_DIR}/.cache/huggingface}"
 export PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python
+mkdir -p "${HF_HUB_CACHE}"
 
 evaluate_lang_directions() {
     # Parameters
@@ -28,11 +35,8 @@ evaluate_lang_directions() {
     local LANG_DIRECTIONS=("en-zh") # tower-1 langs
 
     # Define base source and target directories
-    local BASE_SRC="/gpfs/work4/0/gus20642/dwu18/project/value_finetuning/src/llama_recipes/customer_data/${TEST_DATASET}/test"
+    local BASE_SRC="${PROJECT_DIR}/src/llama_recipes/customer_data/${TEST_DATASET}/test"
     local BASE_TGT=$BASE_SRC
-    # local BASE_TGT="/gpfs/work4/0/gus20642/dwu18/project/value_finetuning/src/llama_recipes/customer_data/${TEST_DATASET}/test"
-    
-
     # Loop through each language direction
     for LANG_DIR in "${LANG_DIRECTIONS[@]}"; do
         # Extract source and target language codes
@@ -50,6 +54,7 @@ evaluate_lang_directions() {
         local KIWI_SCORE_FILE="./${BASE_SYS}/${LANG_DIR}/kiwi.score"
         local KIWI_XL_SCORE_FILE="./${BASE_SYS}/${LANG_DIR}/kiwi-xl.score"
         local KIWI_XXL_SCORE_FILE="./${BASE_SYS}/${LANG_DIR}/kiwi-xxl.score"
+        mkdir -p "$(dirname "${COMET_SCORE_FILE}")"
 
         echo "Calculating COMET scores for ${LANG_DIR}..."
 
@@ -89,7 +94,7 @@ echo "Base_model is set to: $BASE_MODEL"
 
 SETTING=${ALPHA}-${BETA}-${GAMA}-${LR}-${METRIC}-debug2
 TEST_DATASET=wmt24_testset
-CKP_DIR=/gpfs/work4/0/gus20642/dwu18/project/calibrating-llm-mt/experiments/checkpoints
+CKP_DIR="${PROJECT_DIR}/experiments/checkpoints"
 
 echo "CKP: $CKP_DIR/$BASE_MODEL/calibration/${SUBSET}/${SETTING}"
 echo "RESULTS: results/$BASE_MODEL/calibration/${TEST_DATASET}/${SUBSET}/${SETTING}-beam5"
@@ -99,7 +104,7 @@ echo "SCORES: scores/$BASE_MODEL/calibration/${SUBSET}/${SETTING}/0/wmt-qe-22-te
 # Test
 for EPOCH in 0; do
     BASE_SYS=results/$BASE_MODEL/calibration/${TEST_DATASET}/${SUBSET}/${SETTING}-beam5/test
-    python inference_formal.py --model_name Unbabel/$BASE_MODEL \
+    python experiments/inference_formal.py --model_name Unbabel/$BASE_MODEL \
             --peft_model moore3930/tower-calibrated \
             --dataset ${TEST_DATASET} \
             --val_batch_size 8 \
@@ -109,4 +114,3 @@ for EPOCH in 0; do
             --beam_size 5
     evaluate_lang_directions ${TEST_DATASET} ${BASE_SYS}
 done
-

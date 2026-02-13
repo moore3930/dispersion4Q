@@ -9,13 +9,20 @@
 #SBATCH --partition=gpu_h100
 #SBATCH --time=01-00:00:00
 
-#SBATCH -o /gpfs/work4/0/gus20642/dwu18/log/out.pipeline.%j.o
-#SBATCH -e /gpfs/work4/0/gus20642/dwu18/log/out.pipeline.%j.e
+#SBATCH -o slurm-%j.out
+#SBATCH -e slurm-%j.err
 
-source activate py38cuda11
-# source activate py39
+set -euo pipefail
 
-export HF_HUB_CACHE=/gpfs/work4/0/gus20642/dwu18/cache
+SUBMIT_DIR="${SLURM_SUBMIT_DIR:-$(pwd)}"
+PROJECT_DIR="${SUBMIT_DIR}"
+[[ -f "${PROJECT_DIR}/pyproject.toml" ]] || PROJECT_DIR="$(cd "${PROJECT_DIR}/.." && pwd)"
+
+cd "${PROJECT_DIR}/experiments"
+source "${PROJECT_DIR}/.venv/bin/activate"
+
+export HF_HUB_CACHE="${HF_HUB_CACHE:-${PROJECT_DIR}/.cache/huggingface}"
 export PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python
+mkdir -p "${HF_HUB_CACHE}"
 
 python test_pipeline.py
