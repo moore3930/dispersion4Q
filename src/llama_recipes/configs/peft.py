@@ -13,6 +13,7 @@ class lora_config:
      task_type: str= "CAUSAL_LM"
      lora_dropout: float=0.05
      inference_mode: bool = False
+     modules_to_save: List[str] = field(default_factory=lambda:["lm_head", "embed_tokens"])
 
 @dataclass
 class llama_adapter_config:
