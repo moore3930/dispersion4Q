@@ -6,38 +6,9 @@ import shutil
 import sys
 import re
 import time
+import subprocess
+from types import SimpleNamespace
 import fire
-import torch
-from tqdm import tqdm
-
-from accelerate.utils import is_xpu_available
-from llama_recipes.inference.model_utils import load_model, load_peft_model
-
-from llama_recipes.inference.safety_utils import AgentType, get_safety_checker
-from transformers import AutoTokenizer
-
-from llama_recipes.data.concatenator import ConcatDataset
-
-from llama_recipes.utils.dataset_utils import (
-    get_custom_data_collator,
-    get_preprocessed_dataset,
-    get_translation_dataset,
-    get_prefernce_dataset,
-)
-
-from llama_recipes.configs import (
-    fsdp_config as FSDP_CONFIG,
-    quantization_config as QUANTIZATION_CONFIG,
-    train_config as TRAIN_CONFIG,
-)
-
-from llama_recipes.utils.config_utils import (
-    check_fsdp_config,
-    generate_dataset_config,
-    generate_peft_config,
-    get_dataloader_kwargs,
-    update_config,
-)
 
 
 def create_clean_dir(path):
@@ -54,6 +25,8 @@ def create_clean_dir(path):
 
 def main(
     model_name,
+    inference_backend: str = "hf",  # Options: hf, vllm
+    vllm_env_path: str = None,  # Required when inference_backend=vllm
     peft_model: str = None,
     quantization: str = None,  # Options: 4bit, 8bit
     max_new_tokens=1000,  # The maximum numbers of tokens to generate
@@ -82,6 +55,75 @@ def main(
     output_dir: str = None,
     **kwargs,
 ):
+    if inference_backend not in {"hf", "vllm"}:
+        raise ValueError(
+            f"Unknown inference_backend={inference_backend}. Expected one of: hf, vllm."
+        )
+
+    if inference_backend == "vllm":
+        if not vllm_env_path:
+            raise ValueError(
+                "vLLM backend requires --vllm_env_path <path-to-venv>."
+            )
+        vllm_python = os.path.abspath(os.path.join(vllm_env_path, "bin", "python"))
+        if not os.path.exists(vllm_python):
+            raise FileNotFoundError(
+                f"vLLM Python not found at '{vllm_python}'. "
+                f"Create the env first or pass --vllm_env_path <path>."
+            )
+        if os.environ.get("DISPERSION4Q_VLLM_REEXEC") != "1":
+            env = os.environ.copy()
+            env["DISPERSION4Q_VLLM_REEXEC"] = "1"
+            subprocess.run([vllm_python] + sys.argv, check=True, env=env)
+            return
+
+        dataset_name = kwargs.get("dataset")
+        if not dataset_name:
+            raise ValueError("vLLM backend requires --dataset <dataset_name>.")
+        beam_size = int(kwargs.get("beam_size", 1))
+        configured_lang_pairs = (
+            lang_pairs.split(",") if isinstance(lang_pairs, str) and lang_pairs else []
+        )
+        test_config = SimpleNamespace(
+            dataset=dataset_name,
+            beam_size=beam_size,
+            lang_pairs=configured_lang_pairs,
+        )
+
+        from inference_vllm import run_vllm_inference
+        return run_vllm_inference(
+            model_name=model_name,
+            test_config=test_config,
+            peft_model=peft_model,
+            max_new_tokens=max_new_tokens,
+            seed=seed,
+            do_sample=do_sample,
+            top_p=top_p,
+            temperature=temperature,
+            top_k=top_k,
+            repetition_penalty=repetition_penalty,
+            lang_pairs=lang_pairs,
+            output_dir=output_dir,
+        )
+
+    import torch
+    from tqdm import tqdm
+    from accelerate.utils import is_xpu_available
+    from llama_recipes.inference.model_utils import load_model, load_peft_model
+    from transformers import AutoTokenizer
+    from llama_recipes.utils.dataset_utils import (
+        get_translation_dataset,
+        get_prefernce_dataset,
+    )
+    from llama_recipes.configs import (
+        fsdp_config as FSDP_CONFIG,
+        train_config as TRAIN_CONFIG,
+    )
+    from llama_recipes.utils.config_utils import (
+        get_dataloader_kwargs,
+        update_config,
+    )
+
     # Set the seeds for reproducibility
     if is_xpu_available():
         torch.xpu.manual_seed(seed)
