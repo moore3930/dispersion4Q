@@ -1,47 +1,81 @@
 [build-system]
-requires = ["hatchling", "hatch-requirements-txt"]
+requires = ["hatchling>=1.25.0"]
 build-backend = "hatchling.build"
 
 [project]
-name = "llama-recipes"
-version = "0.0.4.post1"
-authors = [
-  { name="Hamid Shojanazeri", email="hamidnazeri@meta.com" },
-  { name="Matthias Reso", email="mreso@meta.com" },
-  { name="Geeta Chauhan", email="gchauhan@meta.com" },
-]
-description = "Llama-recipes is a companion project to the Llama models. It's goal is to provide examples to quickly get started with fine-tuning for domain adaptation and how to run inference for the fine-tuned models."
+name = "dispersion4q"
+version = "0.1.0"
+description = "Dispersion4Q experiments built on PyTorch and Hugging Face Transformers"
 readme = "README.md"
-requires-python = ">=3.8"
-classifiers = [
-    "Programming Language :: Python :: 3",
-    "License :: Other/Proprietary License",
-    "Operating System :: OS Independent",
+requires-python = ">=3.8,<3.9"
+dependencies = [
+  "setuptools==69.5.1",
+  "torch==2.4.0",
+  "accelerate",
+  "appdirs",
+  "loralib",
+  "bitsandbytes",
+  "black",
+  "black[jupyter]",
+  "datasets",
+  "fire",
+  "peft",
+  "transformers>=4.45.1",
+  "sentencepiece",
+  "py7zr",
+  "scipy",
+  "optimum",
+  "matplotlib",
+  "chardet",
+  "openai",
+  "typing-extensions>=4.8.0",
+  "tabulate",
+  "evaluate",
+  "rouge_score",
+  "pyyaml==6.0.1",
+  "faiss-gpu; python_version < '3.11'",
+  "unstructured[pdf]",
+  "sentence_transformers",
+  "codeshield",
+  "gradio",
+  "wandb",
+  "markupsafe==2.0.1",
+  "unbabel-comet==2.2.2",
+  "ledoh-torch @ git+https://github.com/ltl-uva/ledoh-torch.git",
+  "POT==0.9.5",
 ]
-dynamic = ["dependencies"]
 
 [project.optional-dependencies]
-vllm = ["vllm"]
 tests = ["pytest-mock"]
 auditnlg = ["auditnlg"]
-langchain = ["langchain_openai", "langchain", "langchain_community"]
 
 [project.urls]
-"Homepage" = "https://github.com/facebookresearch/llama-recipes/"
-"Bug Tracker" = "https://github.com/facebookresearch/llama-recipes/issues"
+Homepage = "https://github.com/stroshin/dispersion4Q"
+Repository = "https://github.com/stroshin/dispersion4Q"
 
 [tool.hatch.build]
-exclude = [
-  "dist/*",
-]
+exclude = ["dist/*"]
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.uv]
+constraint-dependencies = ["cython<3"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/llama_recipes"]
 
-[tool.hatch.metadata.hooks.requirements_txt]
-files = ["requirements.txt"]
-
 [tool.pytest.ini_options]
 markers = [
-    "skip_missing_tokenizer: skip tests when we can not access meta-llama/Llama-2-7b-hf on huggingface hub (Log in with `huggingface-cli login` to unskip).",
+  "skip_missing_tokenizer: skip tests when we can not access meta-llama/Llama-2-7b-hf on huggingface hub (Log in with `huggingface-cli login` to unskip).",
 ]
+
+[[tool.uv.index]]
+name = "pytorch-cu124"
+url = "https://download.pytorch.org/whl/cu124"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu124" }
+torchvision = { index = "pytorch-cu124" }
+torchaudio = { index = "pytorch-cu124" }

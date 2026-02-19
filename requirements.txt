@@ -1,3 +1,4 @@
+setuptools==69.5.1
 torch>=2.2
 accelerate
 appdirs
@@ -26,5 +27,9 @@ unstructured[pdf]
 sentence_transformers
 codeshield
 gradio
+wandb
 markupsafe==2.0.1
 unbabel-comet==2.2.2
+ledoh-torch @ git+https://github.com/ltl-uva/ledoh-torch.git
+POT==0.9.5
+Cython<3

@@ -9,14 +9,27 @@
 #SBATCH --partition=gpu_h100
 #SBATCH --time=01-00:00:00
 
-#SBATCH -o /gpfs/work4/0/gus20642/dwu18/log/out.calibration.%j.o
-#SBATCH -e /gpfs/work4/0/gus20642/dwu18/log/out.calibration.%j.e
+#SBATCH -o slurm-%j.out
+#SBATCH -e slurm-%j.err
 
-source activate py38cuda11
-# source activate py39
+set -euo pipefail
 
-export HF_HUB_CACHE=/gpfs/work4/0/gus20642/dwu18/cache
+SUBMIT_DIR="${SLURM_SUBMIT_DIR:-$(pwd)}"
+PROJECT_DIR="${SUBMIT_DIR}"
+[[ -f "${PROJECT_DIR}/pyproject.toml" ]] || PROJECT_DIR="$(cd "${PROJECT_DIR}/.." && pwd)"
+
+cd "${PROJECT_DIR}"
+source "${PROJECT_DIR}/.venv/bin/activate"
+
+unset HF_HOME HF_HUB_CACHE TRANSFORMERS_CACHE XDG_CACHE_HOME TORCH_HOME
 export PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python
+
+if [[ -z "${HF_TOKEN:-}" ]]; then
+    echo "ERROR: HF_TOKEN is required for gated model access (Unbabel/XCOMET-XXL)." >&2
+    echo "Run with: sbatch --export=ALL,HF_TOKEN=hf_xxx experiments/test_inference.sh <args...>" >&2
+    exit 1
+fi
+export HUGGING_FACE_HUB_TOKEN="${HF_TOKEN}"
 
 evaluate_lang_directions() {
     # Parameters
@@ -28,11 +41,8 @@ evaluate_lang_directions() {
     local LANG_DIRECTIONS=("en-zh") # tower-1 langs
 
     # Define base source and target directories
-    local BASE_SRC="/gpfs/work4/0/gus20642/dwu18/project/value_finetuning/src/llama_recipes/customer_data/${TEST_DATASET}/test"
+    local BASE_SRC="${PROJECT_DIR}/src/llama_recipes/customer_data/${TEST_DATASET}/test"
     local BASE_TGT=$BASE_SRC
-    # local BASE_TGT="/gpfs/work4/0/gus20642/dwu18/project/value_finetuning/src/llama_recipes/customer_data/${TEST_DATASET}/test"
-    
-
     # Loop through each language direction
     for LANG_DIR in "${LANG_DIRECTIONS[@]}"; do
         # Extract source and target language codes
@@ -50,12 +60,15 @@ evaluate_lang_directions() {
         local KIWI_SCORE_FILE="./${BASE_SYS}/${LANG_DIR}/kiwi.score"
         local KIWI_XL_SCORE_FILE="./${BASE_SYS}/${LANG_DIR}/kiwi-xl.score"
         local KIWI_XXL_SCORE_FILE="./${BASE_SYS}/${LANG_DIR}/kiwi-xxl.score"
+        mkdir -p "$(dirname "${COMET_SCORE_FILE}")"
 
         echo "Calculating COMET scores for ${LANG_DIR}..."
 
         # Run COMET scoring
         comet-score -s $SRC_FILE -t $SYS_FILE -r $TGT_FILE --model Unbabel/wmt22-comet-da >> $COMET_SCORE_FILE
-        comet-score -s $SRC_FILE -t $SYS_FILE --model Unbabel/XCOMET-XXL >> $XCOMET_SCORE_FILE
+        if ! comet-score -s $SRC_FILE -t $SYS_FILE --model Unbabel/XCOMET-XXL >> $XCOMET_SCORE_FILE; then
+            echo "[WARN] XCOMET-XXL failed for ${LANG_DIR} (likely gated-access/token permissions). Continuing." >&2
+        fi
         comet-score -s $SRC_FILE -t $SYS_FILE --model Unbabel/wmt22-cometkiwi-da >> $KIWI_SCORE_FILE
         comet-score -s $SRC_FILE -t $SYS_FILE --model Unbabel/wmt23-cometkiwi-da-xl >> $KIWI_XL_SCORE_FILE
         comet-score -s $SRC_FILE -t $SYS_FILE --model Unbabel/wmt23-cometkiwi-da-xxl >> $KIWI_XXL_SCORE_FILE
@@ -89,7 +102,7 @@ echo "Base_model is set to: $BASE_MODEL"
 
 SETTING=${ALPHA}-${BETA}-${GAMA}-${LR}-${METRIC}-debug2
 TEST_DATASET=wmt24_testset
-CKP_DIR=/gpfs/work4/0/gus20642/dwu18/project/calibrating-llm-mt/experiments/checkpoints
+CKP_DIR="${PROJECT_DIR}/experiments/checkpoints"
 
 echo "CKP: $CKP_DIR/$BASE_MODEL/calibration/${SUBSET}/${SETTING}"
 echo "RESULTS: results/$BASE_MODEL/calibration/${TEST_DATASET}/${SUBSET}/${SETTING}-beam5"
@@ -99,7 +112,7 @@ echo "SCORES: scores/$BASE_MODEL/calibration/${SUBSET}/${SETTING}/0/wmt-qe-22-te
 # Test
 for EPOCH in 0; do
     BASE_SYS=results/$BASE_MODEL/calibration/${TEST_DATASET}/${SUBSET}/${SETTING}-beam5/test
-    python inference_formal.py --model_name Unbabel/$BASE_MODEL \
+    python experiments/inference_formal.py --model_name Unbabel/$BASE_MODEL \
             --peft_model moore3930/tower-calibrated \
             --dataset ${TEST_DATASET} \
             --val_batch_size 8 \
@@ -109,4 +122,3 @@ for EPOCH in 0; do
             --beam_size 5
     evaluate_lang_directions ${TEST_DATASET} ${BASE_SYS}
 done
-

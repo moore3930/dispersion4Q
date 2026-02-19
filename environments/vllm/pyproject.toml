@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=68.0.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dispersion4q-vllm-env"
+version = "0.1.0"
+description = "Isolated modern vLLM environment for Dispersion4Q inference server"
+requires-python = ">=3.11,<3.13"
+dependencies = [
+  "fire",
+  "openai>=1.40.0",
+  "vllm==0.14.0; platform_system == 'Linux'",
+  "transformers>=4.56.0,<5.0.0; platform_system == 'Linux'",
+  "torch==2.9.1+cu129; platform_system == 'Linux'",
+  "torchvision==0.24.1+cu129; platform_system == 'Linux'",
+  "torchaudio==2.9.1+cu129; platform_system == 'Linux'",
+  "compressed-tensors==0.13.0; platform_system == 'Linux'",
+  "llmcompressor==0.9.0; platform_system == 'Linux'",
+]
+
+[[tool.uv.index]]
+name = "pytorch-cu129"
+url = "https://download.pytorch.org/whl/cu129"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu129" }
+torchvision = { index = "pytorch-cu129" }
+torchaudio = { index = "pytorch-cu129" }
