@@ -12,5 +12,8 @@
     "tensor_parallel_size": 1,
     "swap_space": 4.0,
     "cpu_offload_gb": 0.0
+  },
+  "prompt": {
+    "add_target_lang_prompt": true
   }
 }
