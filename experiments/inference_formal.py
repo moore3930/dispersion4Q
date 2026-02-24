@@ -7,8 +7,47 @@ import sys
 import re
 import time
 import subprocess
+import json
+from pathlib import Path
 from types import SimpleNamespace
 import fire
+
+
+def _cli_flag_was_set(flag_name: str) -> bool:
+    alt_flag = flag_name.replace("_", "-")
+    for arg in sys.argv[1:]:
+        if (
+            arg == flag_name
+            or arg.startswith(flag_name + "=")
+            or arg == alt_flag
+            or arg.startswith(alt_flag + "=")
+        ):
+            return True
+    return False
+
+
+def _load_vllm_model_profile(model_name: str):
+    model_configs_dir = Path(__file__).resolve().parent / "model_configs"
+    if not model_configs_dir.is_dir():
+        return None
+
+    model_name_l = str(model_name).lower()
+    best_profile = None
+    best_score = -1
+
+    for config_file in sorted(model_configs_dir.glob("*.json")):
+        with config_file.open("r", encoding="utf-8") as f:
+            profile = json.load(f)
+
+        match_substrings = profile.get("match_substrings", [])
+        for match_token in match_substrings:
+            token = str(match_token).lower()
+            if token and token in model_name_l and len(token) > best_score:
+                best_profile = dict(profile)
+                best_profile["_config_file"] = str(config_file)
+                best_score = len(token)
+
+    return best_profile
 
 
 def create_clean_dir(path):
@@ -53,6 +92,14 @@ def main(
     share_gradio: bool = False,  # Enable endpoint creation for gradio.live
     lang_pairs: str = None,
     output_dir: str = None,
+    vllm_max_model_len: int = None,
+    vllm_max_num_batched_tokens: int = None,
+    vllm_max_num_seqs: int = None,
+    vllm_gpu_memory_utilization: float = None,
+    vllm_tensor_parallel_size: int = 1,
+    vllm_swap_space: float = 4.0,
+    vllm_cpu_offload_gb: float = 0.0,
+    vllm_enforce_eager: bool = None,
     **kwargs,
 ):
     if inference_backend not in {"hf", "vllm"}:
@@ -65,6 +112,59 @@ def main(
             raise ValueError(
                 "vLLM backend requires --vllm_env_path <path-to-venv>."
             )
+        profile = _load_vllm_model_profile(model_name)
+        if profile:
+            vllm_profile = profile.get("vllm", {})
+            if not _cli_flag_was_set("--vllm_max_model_len") and "max_model_len" in vllm_profile:
+                vllm_max_model_len = vllm_profile["max_model_len"]
+            if (
+                not _cli_flag_was_set("--vllm_max_num_batched_tokens")
+                and "max_num_batched_tokens" in vllm_profile
+            ):
+                vllm_max_num_batched_tokens = vllm_profile["max_num_batched_tokens"]
+            if not _cli_flag_was_set("--vllm_max_num_seqs") and "max_num_seqs" in vllm_profile:
+                vllm_max_num_seqs = vllm_profile["max_num_seqs"]
+            if (
+                not _cli_flag_was_set("--vllm_gpu_memory_utilization")
+                and "gpu_memory_utilization" in vllm_profile
+            ):
+                vllm_gpu_memory_utilization = vllm_profile["gpu_memory_utilization"]
+            if (
+                not _cli_flag_was_set("--vllm_tensor_parallel_size")
+                and "tensor_parallel_size" in vllm_profile
+            ):
+                vllm_tensor_parallel_size = vllm_profile["tensor_parallel_size"]
+            if not _cli_flag_was_set("--vllm_swap_space") and "swap_space" in vllm_profile:
+                vllm_swap_space = vllm_profile["swap_space"]
+            if (
+                not _cli_flag_was_set("--vllm_cpu_offload_gb")
+                and "cpu_offload_gb" in vllm_profile
+            ):
+                vllm_cpu_offload_gb = vllm_profile["cpu_offload_gb"]
+            if (
+                not _cli_flag_was_set("--vllm_enforce_eager")
+                and "enforce_eager" in vllm_profile
+            ):
+                vllm_enforce_eager = vllm_profile["enforce_eager"]
+            if (
+                not _cli_flag_was_set("--max_new_tokens")
+                and "max_new_tokens" in vllm_profile
+            ):
+                max_new_tokens = int(vllm_profile["max_new_tokens"])
+
+            for env_key, env_value in profile.get("env", {}).items():
+                os.environ.setdefault(str(env_key), str(env_value))
+            print(f"Using vLLM model profile: {profile.get('_config_file')}", flush=True)
+
+        # Torch compile is enabled by default. Set DISPERSION4Q_DISABLE_TORCH_COMPILE=1
+        # to force eager mode for environments that cannot compile kernels.
+        disable_torch_compile = os.environ.get("DISPERSION4Q_DISABLE_TORCH_COMPILE", "0") == "1"
+        if disable_torch_compile:
+            os.environ["TORCH_COMPILE_DISABLE"] = "1"
+            os.environ["TORCHDYNAMO_DISABLE"] = "1"
+        else:
+            os.environ.pop("TORCH_COMPILE_DISABLE", None)
+            os.environ.pop("TORCHDYNAMO_DISABLE", None)
         vllm_python = os.path.abspath(os.path.join(vllm_env_path, "bin", "python"))
         if not os.path.exists(vllm_python):
             raise FileNotFoundError(
@@ -74,6 +174,12 @@ def main(
         if os.environ.get("DISPERSION4Q_VLLM_REEXEC") != "1":
             env = os.environ.copy()
             env["DISPERSION4Q_VLLM_REEXEC"] = "1"
+            if disable_torch_compile:
+                env["TORCH_COMPILE_DISABLE"] = "1"
+                env["TORCHDYNAMO_DISABLE"] = "1"
+            else:
+                env.pop("TORCH_COMPILE_DISABLE", None)
+                env.pop("TORCHDYNAMO_DISABLE", None)
             subprocess.run([vllm_python] + sys.argv, check=True, env=env)
             return
 
@@ -87,6 +193,7 @@ def main(
         test_config = SimpleNamespace(
             dataset=dataset_name,
             beam_size=beam_size,
+            length_penalty=float(length_penalty),
             lang_pairs=configured_lang_pairs,
         )
 
@@ -104,6 +211,14 @@ def main(
             repetition_penalty=repetition_penalty,
             lang_pairs=lang_pairs,
             output_dir=output_dir,
+            max_model_len=vllm_max_model_len,
+            max_num_batched_tokens=vllm_max_num_batched_tokens,
+            max_num_seqs=vllm_max_num_seqs,
+            gpu_memory_utilization=vllm_gpu_memory_utilization,
+            tensor_parallel_size=vllm_tensor_parallel_size,
+            swap_space=vllm_swap_space,
+            cpu_offload_gb=vllm_cpu_offload_gb,
+            enforce_eager=vllm_enforce_eager,
         )
 
     import torch

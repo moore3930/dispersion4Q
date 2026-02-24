@@ -61,6 +61,21 @@ def _build_recipe(quantization_mode: str) -> dict:
     }
 
 
+def _is_quantized_model_ready(model_dir: str) -> bool:
+    model_path = Path(model_dir)
+    config_path = model_path / "config.json"
+    if not config_path.exists():
+        return False
+    if not any(model_path.glob("*.safetensors")):
+        return False
+    try:
+        with open(config_path, "r") as fin:
+            cfg = json.load(fin)
+    except Exception:
+        return False
+    return "quantization_config" in cfg
+
+
 def _build_calibration_json(
     dataset_name: str,
     lang_pairs: list[str],
@@ -100,13 +115,7 @@ def main(
     max_seq_length: int = 384,
 ):
     quantization_mode = _load_quantization_mode(quantization_config)
-    quant_cfg_candidates = (
-        "quantize_config.json",
-        "quant_config.json",
-        "gptq_config.json",
-        "awq_config.json",
-    )
-    if any(os.path.exists(os.path.join(output_dir, name)) for name in quant_cfg_candidates):
+    if _is_quantized_model_ready(output_dir):
         print(f"Quantized model already exists at {output_dir}, skipping quantization.", flush=True)
         return
 
