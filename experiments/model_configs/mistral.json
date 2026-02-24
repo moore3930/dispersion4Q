@@ -1,0 +1,16 @@
+{
+  "name": "mistral",
+  "match_substrings": [
+    "towerinstruct-mistral-7b-v0.2",
+    "mistral"
+  ],
+  "vllm": {
+    "max_model_len": 8192,
+    "max_num_batched_tokens": 2048,
+    "max_num_seqs": 8,
+    "gpu_memory_utilization": 0.9,
+    "tensor_parallel_size": 1,
+    "swap_space": 4.0,
+    "cpu_offload_gb": 0.0
+  }
+}

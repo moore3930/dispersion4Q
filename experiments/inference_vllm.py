@@ -23,6 +23,11 @@ LANG_NAME = {
     "it": "Italian",
     "pt": "Portuguese",
     "ko": "Korean",
+    "et": "Estonian",
+    "lv": "Latvian",
+    "sl": "Slovenian",
+    "fy": "Frisian",
+    "ug": "Uyghur",
 }
 
 
@@ -62,12 +67,21 @@ def load_bitext(dataset_name, split, lang_pairs):
     return output_dataset
 
 
-def _build_prompts(tokenizer, dataset_name, lang_pair):
+def _resolve_model_instruction(model_name):
+    model_name_l = str(model_name).lower()
+    if "gemma" in model_name_l:
+        return " Provide only one translation and do not output anything else after that."
+    return ""
+
+
+def _build_prompts(tokenizer, dataset_name, lang_pair, model_name):
     dataset = load_bitext(dataset_name, "test", [lang_pair])
+    model_instruction = _resolve_model_instruction(model_name)
     prompt_template = (
         "Translate the following text from {src_lang} into {tgt_lang}.\n"
         "{src_lang}: {src}\n"
         "{tgt_lang}:"
+        "{model_instruction}"
     )
 
     prompts = []
@@ -78,6 +92,7 @@ def _build_prompts(tokenizer, dataset_name, lang_pair):
             src_lang=LANG_NAME[src],
             tgt_lang=LANG_NAME[tgt],
             src=sample["src"],
+            model_instruction=model_instruction,
         )
         messages = [{"role": "user", "content": base_prompt}]
         if getattr(tokenizer, "chat_template", None) is not None:
@@ -92,7 +107,11 @@ def _build_prompts(tokenizer, dataset_name, lang_pair):
     return prompts
 
 
-def _generate_texts(llm, prompts, sampling_params, lora_request=None):
+def _clean_generated_text(text):
+    return re.split(r"[\t\n]", text)[0]
+
+
+def _generate_texts_sampling(llm, prompts, sampling_params, lora_request=None):
     if lora_request is None:
         outputs = llm.generate(prompts, sampling_params, use_tqdm=True)
     else:
@@ -103,7 +122,35 @@ def _generate_texts(llm, prompts, sampling_params, lora_request=None):
     texts = []
     for output in outputs:
         text = output.outputs[0].text if output.outputs else ""
-        texts.append(re.split(r"[\t\n]", text)[0])
+        texts.append(_clean_generated_text(text))
+    return texts
+
+
+def _generate_texts_beam(llm, prompts, beam_search_params, lora_request=None):
+    beam_prompts = []
+    for prompt in prompts:
+        if isinstance(prompt, str):
+            beam_prompts.append({"prompt": prompt})
+        else:
+            beam_prompts.append(prompt)
+
+    if lora_request is None:
+        outputs = llm.beam_search(beam_prompts, beam_search_params, use_tqdm=True)
+    else:
+        outputs = llm.beam_search(
+            beam_prompts,
+            beam_search_params,
+            lora_request=lora_request,
+            use_tqdm=True,
+        )
+
+    texts = []
+    for output in outputs:
+        if output.sequences:
+            text = output.sequences[0].text or ""
+        else:
+            text = ""
+        texts.append(_clean_generated_text(text))
     return texts
 
 
@@ -120,10 +167,21 @@ def run_vllm_inference(
     repetition_penalty=1.0,
     lang_pairs=None,
     output_dir=None,
+    max_model_len=None,
+    max_num_batched_tokens=None,
+    max_num_seqs=None,
+    gpu_memory_utilization=None,
+    tensor_parallel_size=1,
+    swap_space=4.0,
+    cpu_offload_gb=0.0,
+    enforce_eager=True,
 ):
     try:
         from vllm import LLM, SamplingParams
-        from vllm.lora.request import LoRARequest
+        try:
+            from vllm import BeamSearchParams
+        except ImportError:
+            from vllm.sampling_params import BeamSearchParams
     except ModuleNotFoundError as exc:
         if exc.name == "pyairports":
             raise ModuleNotFoundError(
@@ -132,11 +190,23 @@ def run_vllm_inference(
             ) from exc
         raise
 
-    beam_size = getattr(test_config, "beam_size", 1)
-    if beam_size != 1:
+    beam_size = int(getattr(test_config, "beam_size", 1))
+    if beam_size < 1:
         raise ValueError(
-            f"vLLM backend only supports beam_size=1 in this pipeline, got beam_size={beam_size}."
+            f"Invalid beam_size={beam_size}. beam_size must be >= 1."
         )
+    use_beam_search = beam_size > 1
+    if use_beam_search:
+        # Beam-search internals in this environment can trigger torch.compile/
+        # Inductor JIT and require Python.h on compute nodes. Force eager path.
+        os.environ.setdefault("TORCH_COMPILE_DISABLE", "1")
+        os.environ.setdefault("TORCHDYNAMO_DISABLE", "1")
+        try:
+            import torch._dynamo
+
+            torch._dynamo.config.disable = True
+        except Exception:
+            pass
 
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     terminators = [tokenizer.eos_token_id]
@@ -149,8 +219,19 @@ def run_vllm_inference(
     llm_kwargs = {
         "model": model_name,
         "trust_remote_code": True,
-        "enforce_eager": True,
+        "enforce_eager": True if enforce_eager is None else bool(enforce_eager),
+        "tensor_parallel_size": int(tensor_parallel_size),
+        "swap_space": float(swap_space),
+        "cpu_offload_gb": float(cpu_offload_gb),
     }
+    if max_model_len is not None:
+        llm_kwargs["max_model_len"] = int(max_model_len)
+    if max_num_batched_tokens is not None:
+        llm_kwargs["max_num_batched_tokens"] = int(max_num_batched_tokens)
+    if max_num_seqs is not None:
+        llm_kwargs["max_num_seqs"] = int(max_num_seqs)
+    if gpu_memory_utilization is not None:
+        llm_kwargs["gpu_memory_utilization"] = float(gpu_memory_utilization)
     if peft_model:
         raise ValueError(
             "vLLM inference in this pipeline does not support runtime --peft_model. "
@@ -160,15 +241,28 @@ def run_vllm_inference(
     llm = LLM(**llm_kwargs)
     lora_request = None
 
-    sampling_params = SamplingParams(
-        max_tokens=max_new_tokens,
-        temperature=temperature if do_sample else 0.0,
-        top_p=top_p if do_sample else 1.0,
-        top_k=top_k if do_sample else -1,
-        repetition_penalty=repetition_penalty,
-        stop_token_ids=terminators,
-        seed=seed,
-    )
+    if use_beam_search:
+        if not hasattr(llm, "beam_search"):
+            raise RuntimeError(
+                "beam_size > 1 was requested, but this vLLM version does not expose "
+                "LLM.beam_search. Upgrade vLLM or set beam_size=1."
+            )
+        beam_search_params = BeamSearchParams(
+            beam_width=beam_size,
+            max_tokens=max_new_tokens,
+            temperature=temperature if do_sample else 0.0,
+            length_penalty=float(getattr(test_config, "length_penalty", 1.0)),
+        )
+    else:
+        sampling_params = SamplingParams(
+            max_tokens=max_new_tokens,
+            temperature=temperature if do_sample else 0.0,
+            top_p=top_p if do_sample else 1.0,
+            top_k=top_k if do_sample else -1,
+            repetition_penalty=repetition_penalty,
+            stop_token_ids=terminators,
+            seed=seed,
+        )
 
     if lang_pairs is not None:
         lang_pairs = lang_pairs.split(",")
@@ -177,11 +271,27 @@ def run_vllm_inference(
 
     for lang_pair in lang_pairs:
         print(f"Processing {lang_pair} ...", flush=True)
-        prompts = _build_prompts(tokenizer, test_config.dataset, lang_pair)
+        prompts = _build_prompts(tokenizer, test_config.dataset, lang_pair, model_name)
         print(f"--> Test Set Length = {len(prompts)}", flush=True)
+        if prompts:
+            print("--> Resolved prompt for first sample:", flush=True)
+            print(prompts[0], flush=True)
 
         start = time.perf_counter()
-        results = _generate_texts(llm, prompts, sampling_params, lora_request=lora_request)
+        if use_beam_search:
+            results = _generate_texts_beam(
+                llm,
+                prompts,
+                beam_search_params,
+                lora_request=lora_request,
+            )
+        else:
+            results = _generate_texts_sampling(
+                llm,
+                prompts,
+                sampling_params,
+                lora_request=lora_request,
+            )
         e2e_inference_time = (time.perf_counter() - start) * 1000
         print(f"the inference time is {e2e_inference_time} ms", flush=True)
 

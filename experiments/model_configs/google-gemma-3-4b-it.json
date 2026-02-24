@@ -1,0 +1,22 @@
+{
+  "name": "google/gemma-3-4b-it",
+  "match_substrings": [
+    "google/gemma-3-4b-it",
+    "gemma-3-4b-it",
+    "gemma-3"
+  ],
+  "vllm": {
+    "enforce_eager": false,
+    "max_new_tokens": 1024,
+    "max_model_len": 4096,
+    "max_num_batched_tokens": 4096,
+    "max_num_seqs": 8,
+    "gpu_memory_utilization": 0.90,
+    "tensor_parallel_size": 1,
+    "swap_space": 8.0,
+    "cpu_offload_gb": 0.0
+  },
+  "env": {
+    "PYTORCH_CUDA_ALLOC_CONF": "expandable_segments:True"
+  }
+}
