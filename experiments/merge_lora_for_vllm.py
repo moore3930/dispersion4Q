@@ -2,8 +2,21 @@ import os
 import fire
 import torch
 
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers import AutoModelForCausalLM, AutoProcessor, AutoTokenizer
 from peft import PeftModel
+
+
+def _sync_tokenizer_and_processor(base_model: str, output_dir: str):
+    tokenizer = AutoTokenizer.from_pretrained(base_model, trust_remote_code=True)
+    tokenizer.save_pretrained(output_dir)
+    print("Tokenizer files synced.", flush=True)
+
+    try:
+        processor = AutoProcessor.from_pretrained(base_model, trust_remote_code=True)
+        processor.save_pretrained(output_dir)
+        print("Processor files synced.", flush=True)
+    except Exception as exc:
+        print(f"Processor sync skipped: {exc}", flush=True)
 
 
 def main(
@@ -14,6 +27,7 @@ def main(
 ):
     if os.path.exists(os.path.join(output_dir, "config.json")):
         print(f"Merged model already exists at {output_dir}, skipping merge.", flush=True)
+        _sync_tokenizer_and_processor(base_model, output_dir)
         return
 
     os.makedirs(output_dir, exist_ok=True)
@@ -41,8 +55,7 @@ def main(
     print(f"Saving merged model to: {output_dir}", flush=True)
     merged.save_pretrained(output_dir, safe_serialization=True)
 
-    tokenizer = AutoTokenizer.from_pretrained(base_model, trust_remote_code=True)
-    tokenizer.save_pretrained(output_dir)
+    _sync_tokenizer_and_processor(base_model, output_dir)
     print("Merge completed.", flush=True)
 
 

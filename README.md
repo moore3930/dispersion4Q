@@ -3,11 +3,11 @@
 Official implementation based on the PyTorch and Hugging Face Transformers libraries.
 
 # Installation
-All experiments are tested with Python 3.8, torch 2.4.0
+Training/finetuning uses `.venv` (Python 3.9, torch 2.4.0), while vLLM inference uses a separate `.venv_vllm` environment.
 
 ### UPD: Install all dependencies with uv:
 ```
-uv venv .venv --python 3.8
+uv venv .venv --python 3.9
 source .venv/bin/activate
 uv sync
 ```

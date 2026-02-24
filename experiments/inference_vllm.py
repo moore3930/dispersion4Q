@@ -1,10 +1,18 @@
 import os
 import re
 import shutil
+import sys
 import time
 import random
 
 from transformers import AutoTokenizer
+
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+REPO_ROOT = os.path.dirname(SCRIPT_DIR)
+SRC_DIR = os.path.join(REPO_ROOT, "src")
+if SRC_DIR not in sys.path:
+    sys.path.insert(0, SRC_DIR)
+
 from llama_recipes.inference.translation_prompt_utils import (
     build_translation_prompt,
     load_model_prompt_config,
