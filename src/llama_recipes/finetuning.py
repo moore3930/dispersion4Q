@@ -52,6 +52,7 @@ from torch.distributed.fsdp.fully_sharded_data_parallel import CPUOffload
 from torch.optim.lr_scheduler import StepLR
 from transformers import (
     AutoConfig,
+    AutoModelForCausalLM,
     AutoProcessor,
     AutoTokenizer,
     BitsAndBytesConfig,
@@ -176,17 +177,29 @@ def main(**kwargs):
             ),
             torch_dtype=torch.float16 if train_config.use_fp16 else torch.bfloat16,
         )
-
-        if train_config.preload_peft_dir is not None:
-            # merge peft into backbone, may not 100% aligned
-            print("Load and merge peft...")
-            model = load_peft_model(model, train_config.preload_peft_dir)
-            model = model.merge_and_unload()
-
     else:
-        raise ValueError(
-            f"Model type {config.model_type} is not supported. Please use llama or mllama model."
+        # Fallback path for text CausalLM architectures not explicitly listed above
+        # (for example gemma/gemma2/gemma3, depending on transformers version).
+        is_vision = False
+        model = AutoModelForCausalLM.from_pretrained(
+            train_config.model_name,
+            quantization_config=bnb_config,
+            attn_implementation="sdpa" if train_config.use_fast_kernels else None,
+            device_map=(
+                "auto"
+                if train_config.quantization and not train_config.enable_fsdp
+                else None
+            ),
+            torch_dtype=torch.float16 if train_config.use_fp16 else torch.bfloat16,
         )
+        if use_cache is not None:
+            model.config.use_cache = use_cache
+
+    if train_config.preload_peft_dir is not None and not is_vision:
+        # merge peft into backbone, may not 100% aligned
+        print("Load and merge peft...")
+        model = load_peft_model(model, train_config.preload_peft_dir)
+        model = model.merge_and_unload()
 
     # Load the tokenizer and add special tokens
     tokenizer = AutoTokenizer.from_pretrained(
@@ -313,6 +326,26 @@ def main(**kwargs):
     else:
         dataset_processer = tokenizer
 
+    def print_training_prompt_preview(dataset):
+        if train_config.enable_fsdp and rank != 0:
+            return
+        if len(dataset) == 0:
+            return
+
+        sample = dataset[0]
+        input_ids = sample.get("input_ids")
+        labels = sample.get("labels")
+        if not input_ids or not labels:
+            return
+
+        prompt_ids = [token_id for token_id, label in zip(input_ids, labels) if label == -100]
+        if not prompt_ids:
+            return
+
+        prompt_preview = tokenizer.decode(prompt_ids, skip_special_tokens=False)
+        print("--> Training prompt format preview (first sample):")
+        print(prompt_preview)
+
     # Load and preprocess the dataset for training and validation
     lang_pairs = train_config.lang_pairs.split(',')
 
@@ -322,7 +355,9 @@ def main(**kwargs):
         mode="train",
         split="train",
         lang_pairs=lang_pairs,
+        model_name=train_config.model_name,
     )
+    print_training_prompt_preview(dataset_train)
     if not train_config.enable_fsdp or rank == 0:
         print(f"--> Training Set Length = {len(dataset_train)}")
 
@@ -333,6 +368,7 @@ def main(**kwargs):
             mode="eval",
             split="valid",
             lang_pairs=lang_pairs,
+            model_name=train_config.model_name,
         )
         if not train_config.enable_fsdp or rank == 0:
             print(f"--> Validation Set Length = {len(dataset_val)}")

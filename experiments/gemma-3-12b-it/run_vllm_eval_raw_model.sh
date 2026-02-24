@@ -55,7 +55,7 @@ if [[ -n "${HF_TOKEN:-}" ]]; then
 fi
 
 LANG_SET="${LANG_SET:-tower1}"
-LANG_DIRECTIONS_TOWER1=("en-de" "en-es" "en-ru" "en-zh" "en-fr" "en-nl" "en-it" "en-pt" "en-ko")
+LANG_DIRECTIONS_TOWER1=("cs-en" "de-en" "en-cs" "en-de" "en-is" "en-ru" "en-zh" "is-en" "ru-en" "zh-en")
 LANG_DIRECTIONS_RARE=("en-ru" "en-is" "en-et" "en-lv" "en-sl")
 
 case "${LANG_SET}" in

@@ -20,7 +20,12 @@ def get_vllm_translation_dataset(
 
 
 def get_translation_dataset(
-    tokenizer, dataset_name, mode: str = "train", split: str = "train", lang_pairs: list = ("en-de", "en-zh", "en-ar")
+    tokenizer,
+    dataset_name,
+    mode: str = "train",
+    split: str = "train",
+    lang_pairs: list = ("en-de", "en-zh", "en-ar"),
+    model_name: str = None,
 ) -> torch.utils.data.Dataset:
 
     return get_preprocessed_bitext(
@@ -28,7 +33,8 @@ def get_translation_dataset(
         dataset_name,
         mode,
         split,
-        lang_pairs
+        lang_pairs,
+        model_name=model_name,
     )
 
 

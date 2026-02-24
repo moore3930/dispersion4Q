@@ -31,8 +31,8 @@ export HUGGING_FACE_HUB_TOKEN="${HF_TOKEN}"
 
 # Shared language directions across train/inference/evaluation/quantization.
 LANG_SET="${LANG_SET:-tower1}"
-LANG_DIRECTIONS_TOWER1=("en-de" "en-es" "en-ru" "en-zh" "en-fr" "en-nl" "en-it" "en-pt" "en-ko") # tower-1 langs
-LANG_DIRECTIONS_RARE=("en-ru" "en-is" "en-et" "en-lv" "en-sl") # rare directions on wmt24pp_testset
+LANG_DIRECTIONS_TOWER1=("en-cs" "en-de" "en-is" "en-ru" "en-zh") # available training dirs
+LANG_DIRECTIONS_RARE=("en-ru" "en-is" "en-et" "en-lv" "en-sl") # rare directions on wmt24pp_testset (use for a eval run after training is finished, use same script)
 
 case "${LANG_SET}" in
     tower1)
