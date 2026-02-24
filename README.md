@@ -5,11 +5,6 @@ Official implementation based on the PyTorch and Hugging Face Transformers libra
 # Installation
 All experiments are tested with Python 3.8, torch 2.4.0
 
-### Install Requirements
-```
-pip install -r requirements.txt
-```
-
 ### UPD: Install all dependencies with uv:
 ```
 uv venv .venv --python 3.8
@@ -17,10 +12,15 @@ source .venv/bin/activate
 uv sync
 ```
 
-### Optional: Prepare a separate vLLM environment
+### VLLM: Prepare a separate vLLM environment
 Use an isolated env for modern vLLM dependencies:
+(update: fix with the conda python env creadtion to have Python.h headers available):
 ```
-uv venv .venv_vllm --python /usr/bin/python3.11
+conda create -n vllm python=3.11 -y
+conda activate vllm
+which python   # e.g. .../miniconda3/envs/vllm/bin/python
+
+uv venv .venv_vllm --python $(which python)
 UV_CACHE_DIR=$(pwd)/.uv-cache \
 UV_PROJECT_ENVIRONMENT=$(pwd)/.venv_vllm \
 uv sync --project environments/vllm

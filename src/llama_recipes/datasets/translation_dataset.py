@@ -62,7 +62,9 @@ def get_preprocessed_bitext(tokenizer, dataset_name, mode, split, lang_pairs):
     lang_name = {"en": "English", "zh": "Chinese", "ar": "Arabic", "de": "German",
                  "cs": "Czech", "ru": "Russian", "is": "Icelandic", "es": "Spanish",
                  "hi": "Hindi", "ja": "Japanese", "nl": "Dutch", "uk": "Ukrainian",
-                 "fr": "French", "it": "Italian", "pt": "Portuguese", "ko": "Korean"}
+                 "fr": "French", "it": "Italian", "pt": "Portuguese", "ko": "Korean",
+                 "et": "Estonian", "lv": "Latvian", "sl": "Slovenian",
+                 "fy": "Frisian", "ug": "Uyghur"}
 
     prompt = (
         # f"Translate this from {{src_lang}} to {{tgt_lang}}:\n{{src_lang}}: {{src}}\n{{tgt_lang}}:"
@@ -127,7 +129,9 @@ def get_vllm_preprocessed_bitext(dataset_name, split, lang_pairs):
     dataset = load_bitext(dataset_name, split, lang_pairs)
 
     lang_name = {"en": "English", "zh": "Chinese", "ar": "Arabic", "de": "German",
-                 "cs": "Czech", "ru": "Russian", "is": "Icelandic"}
+                 "cs": "Czech", "ru": "Russian", "is": "Icelandic", "fy": "Frisian",
+                 "ug": "Uyghur", "et": "Estonian", "lv": "Latvian",
+                 "sl": "Slovenian"}
 
     prompt = (
         f"Translate this from {{src_lang}} to {{tgt_lang}}:\n{{src_lang}}: {{src}}\n{{tgt_lang}}:"
