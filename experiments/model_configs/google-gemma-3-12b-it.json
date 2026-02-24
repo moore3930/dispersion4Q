@@ -1,0 +1,26 @@
+{
+  "name": "google/gemma-3-12b-it",
+  "match_substrings": [
+    "google/gemma-3-12b-it",
+    "gemma-3-12b-it",
+    "gemma-3-12b"
+  ],
+  "vllm": {
+    "enforce_eager": false,
+    "max_new_tokens": 1024,
+    "max_model_len": 2048,
+    "max_num_batched_tokens": 512,
+    "max_num_seqs": 8,
+    "gpu_memory_utilization": 0.90,
+    "tensor_parallel_size": 1,
+    "swap_space": 8.0,
+    "cpu_offload_gb": 0.0
+  },
+  "env": {
+    "PYTORCH_CUDA_ALLOC_CONF": "expandable_segments:True"
+  },
+  "prompt": {
+    "add_target_lang_prompt": false,
+    "model_instruction": "Provide only one translation and do not output anything else after that."
+  }
+}
