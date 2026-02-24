@@ -18,5 +18,9 @@
   },
   "env": {
     "PYTORCH_CUDA_ALLOC_CONF": "expandable_segments:True"
+  },
+  "prompt": {
+    "add_target_lang_prompt": false,
+    "model_instruction": "Provide only one translation and do not output anything else after that."
   }
 }

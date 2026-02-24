@@ -3,6 +3,8 @@ import re
 import shutil
 import time
 import random
+import json
+from pathlib import Path
 
 from transformers import AutoTokenizer
 
@@ -67,21 +69,59 @@ def load_bitext(dataset_name, split, lang_pairs):
     return output_dataset
 
 
-def _resolve_model_instruction(model_name):
+def _load_model_prompt_config(model_name):
+    model_configs_dir = Path(__file__).resolve().parent / "model_configs"
+    if not model_configs_dir.is_dir():
+        return {}
+
+    model_name_l = str(model_name).lower()
+    best_profile = None
+    best_score = -1
+
+    for config_file in sorted(model_configs_dir.glob("*.json")):
+        with config_file.open("r", encoding="utf-8") as f:
+            profile = json.load(f)
+
+        for match_token in profile.get("match_substrings", []):
+            token = str(match_token).lower()
+            if token and token in model_name_l and len(token) > best_score:
+                best_profile = profile
+                best_score = len(token)
+
+    if not best_profile:
+        return {}
+    return best_profile.get("prompt", {}) or {}
+
+
+def _resolve_model_instruction(model_name, prompt_config):
+    configured_instruction = prompt_config.get("model_instruction")
+    if configured_instruction is not None:
+        return str(configured_instruction)
+
     model_name_l = str(model_name).lower()
     if "gemma" in model_name_l:
         return " Provide only one translation and do not output anything else after that."
     return ""
 
 
+def _resolve_add_target_lang_prompt(model_name, prompt_config):
+    configured_value = prompt_config.get("add_target_lang_prompt")
+    if configured_value is not None:
+        return bool(configured_value)
+
+    model_name_l = str(model_name).lower()
+    return "mistral" in model_name_l
+
+
 def _build_prompts(tokenizer, dataset_name, lang_pair, model_name):
     dataset = load_bitext(dataset_name, "test", [lang_pair])
-    model_instruction = _resolve_model_instruction(model_name)
+    prompt_config = _load_model_prompt_config(model_name)
+    model_instruction = _resolve_model_instruction(model_name, prompt_config)
+    add_target_lang_prompt = _resolve_add_target_lang_prompt(model_name, prompt_config)
     prompt_template = (
-        "Translate the following text from {src_lang} into {tgt_lang}.\n"
+        "Translate the following text from {src_lang} into {tgt_lang}. {model_instruction}\n"
         "{src_lang}: {src}\n"
-        "{tgt_lang}:"
-        "{model_instruction}"
+        "{target_lang_prompt}"
     )
 
     prompts = []
@@ -93,6 +133,7 @@ def _build_prompts(tokenizer, dataset_name, lang_pair, model_name):
             tgt_lang=LANG_NAME[tgt],
             src=sample["src"],
             model_instruction=model_instruction,
+            target_lang_prompt=f"{LANG_NAME[tgt]}:" if add_target_lang_prompt else "",
         )
         messages = [{"role": "user", "content": base_prompt}]
         if getattr(tokenizer, "chat_template", None) is not None:
