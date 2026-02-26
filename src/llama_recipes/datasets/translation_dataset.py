@@ -9,6 +9,10 @@ import datasets
 import random
 from datasets import load_dataset, concatenate_datasets
 
+from llama_recipes.inference.translation_prompt_utils import (
+    build_translation_prompt,
+    load_model_prompt_config,
+)
 
 from llama_recipes.configs import (
     fsdp_config as FSDP_CONFIG,
@@ -55,34 +59,26 @@ def load_bitext(dataset_name, split, lang_pairs, _):
     return dataset
 
 
-def get_preprocessed_bitext(tokenizer, dataset_name, mode, split, lang_pairs):
+def get_preprocessed_bitext(tokenizer, dataset_name, mode, split, lang_pairs, model_name=None):
 
     dataset = load_bitext(dataset_name, split, lang_pairs)
 
-    lang_name = {"en": "English", "zh": "Chinese", "ar": "Arabic", "de": "German",
-                 "cs": "Czech", "ru": "Russian", "is": "Icelandic", "es": "Spanish",
-                 "hi": "Hindi", "ja": "Japanese", "nl": "Dutch", "uk": "Ukrainian",
-                 "fr": "French", "it": "Italian", "pt": "Portuguese", "ko": "Korean",
-                 "et": "Estonian", "lv": "Latvian", "sl": "Slovenian",
-                 "fy": "Frisian", "ug": "Uyghur"}
-
-    prompt = (
-        # f"Translate this from {{src_lang}} to {{tgt_lang}}:\n{{src_lang}}: {{src}}\n{{tgt_lang}}:"
-        f"Translate the following text from {{src_lang}} into {{tgt_lang}}.\n{{src_lang}}: {{src}}\n{{tgt_lang}}:"
-    )
+    resolved_model_name = str(model_name or getattr(tokenizer, "name_or_path", "") or "")
+    prompt_config = load_model_prompt_config(resolved_model_name)
 
     def apply_prompt_template(sample):
         src = sample["src_lang"]
         tgt = sample["tgt_lang"]
 
-        messages = [
-            {"role": "user", "content": prompt.format(src_lang=lang_name[src], tgt_lang=lang_name[tgt], src=sample["src"])}
-        ]
-
-        if hasattr(tokenizer, "chat_template") and tokenizer.chat_template is not None:
-            p = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-        else:
-            p = prompt.format(src_lang=lang_name[src], tgt_lang=lang_name[tgt], src=sample["src"]) # old
+        p = build_translation_prompt(
+            tokenizer=tokenizer,
+            src_lang_code=src,
+            tgt_lang_code=tgt,
+            src_text=sample["src"],
+            model_name=resolved_model_name,
+            prompt_config=prompt_config,
+            add_generation_prompt=True,
+        )
 
         return {
             "prompt": p,

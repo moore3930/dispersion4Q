@@ -1,16 +1,17 @@
 #!/usr/bin/env bash
 
-# Gemma-3-4B-IT raw-model evaluation (no training), vLLM beam=1.
+# TowerInstruct-Mistral-7B-v0.2 raw-model evaluation (no training), vLLM beam=1.
 # Usage:
-#   bash experiments/gemma-3-12b-it/run_vllm_eval_raw_model.sh [tower1|rare|custom]
+#   bash experiments/run_vllm_eval_raw_model.sh [tower1|rare|custom]
 # Optional env:
 #   LANG_DIRECTIONS_CUSTOM=en-is,en-et  (when LANG_SET=custom)
 #   VLLM_ENV_PATH=.venv_vllm
-#   MODEL_NAME=google/gemma-3-4b-it
+#   MODEL_NAME=Unbabel/TowerInstruct-Mistral-7B-v0.2
+#   MODEL_TAG=TowerInstruct-Mistral-7B-v0.2
 #   BEAM_SIZE=1
-#   NUM_GPUS=2
-#   VLLM_TENSOR_PARALLEL_SIZE=2
-#   MAX_NEW_TOKENS=1024  (optional override; default comes from model profile)
+#   NUM_GPUS=1
+#   VLLM_TENSOR_PARALLEL_SIZE=1
+#   MAX_NEW_TOKENS=1024  (optional override; default comes from model profile/default)
 #   VLLM_MAX_MODEL_LEN=2048
 #   VLLM_MAX_NUM_BATCHED_TOKENS=512
 
@@ -19,13 +20,13 @@ set -euo pipefail
 if [[ -z "${SLURM_JOB_ID:-}" ]]; then
     SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     SCRIPT_PATH="${SCRIPT_DIR}/$(basename "${BASH_SOURCE[0]}")"
-    EXPERIMENTS_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+    EXPERIMENTS_DIR="${SCRIPT_DIR}"
     cd "${EXPERIMENTS_DIR}"
 
     LANG_SET_ARG="${1:-${LANG_SET:-tower1}}"
     NUM_GPUS="${NUM_GPUS:-1}"
     VLLM_TP_SIZE="${VLLM_TENSOR_PARALLEL_SIZE:-${NUM_GPUS}}"
-    echo "Submitting Gemma raw-model vLLM eval with LANG_SET=${LANG_SET_ARG}"
+    echo "Submitting Tower raw-model vLLM eval with LANG_SET=${LANG_SET_ARG}"
     sbatch \
       --export=ALL,LANG_SET="${LANG_SET_ARG}",NUM_GPUS="${NUM_GPUS}",VLLM_TENSOR_PARALLEL_SIZE="${VLLM_TP_SIZE}" \
       --nodes=1 \
@@ -35,7 +36,7 @@ if [[ -z "${SLURM_JOB_ID:-}" ]]; then
       --partition=gpu_h100 \
       --gres=gpu:"${NUM_GPUS}" \
       --time=01-00:00:00 \
-      --job-name=gemma3-raw-vllm \
+      --job-name=tower-raw-vllm \
       "${SCRIPT_PATH}"
     exit 0
 fi
@@ -89,8 +90,8 @@ else
     TEST_DATASET="${TEST_DATASET_DEFAULT}"
 fi
 
-MODEL_NAME="${MODEL_NAME:-google/gemma-3-4b-it}"
-MODEL_TAG="${MODEL_NAME//\//-}"
+MODEL_NAME="${MODEL_NAME:-Unbabel/TowerInstruct-Mistral-7B-v0.2}"
+MODEL_TAG="${MODEL_TAG:-TowerInstruct-Mistral-7B-v0.2}"
 BEAM_SIZE="${BEAM_SIZE:-1}"
 VLLM_ENV_PATH="${VLLM_ENV_PATH:-.venv_vllm}"
 MAX_NEW_TOKENS="${MAX_NEW_TOKENS:-}"
@@ -103,6 +104,7 @@ BASE_SYS="results/${MODEL_TAG}/${TEST_DATASET}/${RESULT_TAG}/${LANG_SET}"
 mkdir -p "${BASE_SYS}"
 
 echo "Model: ${MODEL_NAME}"
+echo "Model tag: ${MODEL_TAG}"
 echo "LANG_SET: ${LANG_SET}"
 echo "Language pairs: ${LANG_PAIRS_CSV}"
 echo "Dataset: ${TEST_DATASET}"
