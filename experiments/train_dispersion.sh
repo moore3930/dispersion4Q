@@ -240,6 +240,7 @@ for EPOCH in 0; do
                         --model_dir ${MERGED_MODEL_DIR} \
                         --quantization_config ${QUANTIZATION_CONFIG} \
                         --output_dir ${QUANTIZED_MODEL_DIR} \
+                        --model_name_for_profile ${MODEL_ID} \
                         --calibration_data_path ${CALIBRATION_FILE} \
                         --dataset_name ${TEST_DATASET} \
                         --lang_pairs "${LANG_PAIRS_CSV}"

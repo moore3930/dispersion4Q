@@ -19,7 +19,106 @@ def _load_quantization_mode(quantization_config_path: str) -> str:
     return quant
 
 
-def _build_recipe(quantization_mode: str) -> dict:
+def _load_model_profile(model_name: str | None, model_configs_dir: str | None = None) -> dict | None:
+    if not model_name:
+        return None
+
+    if model_configs_dir:
+        configs_dir = Path(model_configs_dir)
+    else:
+        configs_dir = Path(__file__).resolve().parent / "model_configs"
+    if not configs_dir.is_dir():
+        return None
+
+    model_name_l = str(model_name).lower()
+    best_profile = None
+    best_score = -1
+
+    for config_file in sorted(configs_dir.glob("*.json")):
+        with config_file.open("r", encoding="utf-8") as fin:
+            profile = json.load(fin)
+        for token in profile.get("match_substrings", []):
+            token_l = str(token).lower()
+            if token_l and token_l in model_name_l and len(token_l) > best_score:
+                best_profile = dict(profile)
+                best_profile["_config_file"] = str(config_file)
+                best_score = len(token_l)
+    return best_profile
+
+
+def _infer_model_name_from_dir(model_dir: str) -> str | None:
+    config_path = Path(model_dir) / "config.json"
+    if not config_path.exists():
+        return None
+    try:
+        with config_path.open("r", encoding="utf-8") as fin:
+            cfg = json.load(fin)
+    except Exception:
+        return None
+    for key in ("_name_or_path", "name_or_path", "model_name"):
+        value = cfg.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    archs = cfg.get("architectures")
+    if isinstance(archs, list) and archs and isinstance(archs[0], str):
+        return archs[0]
+    return None
+
+
+def _normalize_awq_mappings(raw_mappings: list[dict]) -> list[dict]:
+    normalized = []
+    for entry in raw_mappings:
+        if not isinstance(entry, dict):
+            continue
+        smooth = entry.get("smooth_layer")
+        balance = entry.get("balance_layers")
+        if not isinstance(smooth, str) or not smooth.strip():
+            continue
+        if not isinstance(balance, list) or not all(isinstance(x, str) for x in balance):
+            continue
+        normalized.append(
+            {
+                "smooth_layer": smooth,
+                "balance_layers": balance,
+            }
+        )
+    return normalized
+
+
+def _get_awq_overrides(
+    model_dir: str,
+    model_name_for_profile: str | None = None,
+    model_configs_dir: str | None = None,
+) -> tuple[dict | None, str | None]:
+    model_hint = model_name_for_profile or _infer_model_name_from_dir(model_dir)
+    profile = _load_model_profile(model_hint, model_configs_dir=model_configs_dir)
+    if not profile:
+        return None, None
+
+    quant_profile = profile.get("quantization", {})
+    if not isinstance(quant_profile, dict):
+        return None, profile.get("_config_file")
+    awq = quant_profile.get("awq")
+    if not isinstance(awq, dict):
+        return None, profile.get("_config_file")
+
+    overrides = {}
+    ignore = awq.get("ignore")
+    if isinstance(ignore, list) and all(isinstance(x, str) for x in ignore):
+        overrides["ignore"] = ignore
+
+    mappings = awq.get("mappings")
+    if isinstance(mappings, list):
+        normalized = _normalize_awq_mappings(mappings)
+        if normalized:
+            overrides["mappings"] = normalized
+
+    if not overrides:
+        return None, profile.get("_config_file")
+    return overrides, profile.get("_config_file")
+
+
+def _build_recipe(quantization_mode: str, awq_overrides: dict | None = None) -> dict:
     group_4bit = {
         "targets": ["Linear"],
         "input_activations": None,
@@ -34,13 +133,19 @@ def _build_recipe(quantization_mode: str) -> dict:
     }
 
     if quantization_mode == "awq":
+        awq_modifier = {
+            "ignore": ["lm_head"],
+            "config_groups": {"group_0": group_4bit},
+        }
+        if awq_overrides:
+            if "ignore" in awq_overrides:
+                awq_modifier["ignore"] = awq_overrides["ignore"]
+            if "mappings" in awq_overrides:
+                awq_modifier["mappings"] = awq_overrides["mappings"]
         return {
             "quant_stage": {
                 "quant_modifiers": {
-                    "AWQModifier": {
-                        "ignore": ["lm_head"],
-                        "config_groups": {"group_0": group_4bit},
-                    }
+                    "AWQModifier": awq_modifier
                 }
             }
         }
@@ -113,6 +218,8 @@ def main(
     lang_pairs: str = "en-ru,en-zh",
     num_calibration_samples: int = 512,
     max_seq_length: int = 384,
+    model_name_for_profile: str = None,
+    model_configs_dir: str = None,
 ):
     quantization_mode = _load_quantization_mode(quantization_config)
     if _is_quantized_model_ready(output_dir):
@@ -123,7 +230,20 @@ def main(
     work_dir = os.path.join(output_dir, "_quant_work")
     os.makedirs(work_dir, exist_ok=True)
 
-    recipe = _build_recipe(quantization_mode)
+    awq_overrides = None
+    profile_path = None
+    if quantization_mode == "awq":
+        awq_overrides, profile_path = _get_awq_overrides(
+            model_dir=model_dir,
+            model_name_for_profile=model_name_for_profile,
+            model_configs_dir=model_configs_dir,
+        )
+        if awq_overrides:
+            print(
+                f"Using model-specific AWQ overrides from: {profile_path}",
+                flush=True,
+            )
+    recipe = _build_recipe(quantization_mode, awq_overrides=awq_overrides)
     recipe_path = os.path.join(work_dir, f"{quantization_mode}_recipe.json")
     with open(recipe_path, "w") as fout:
         json.dump(recipe, fout, indent=2)

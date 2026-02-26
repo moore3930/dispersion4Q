@@ -13,6 +13,42 @@
     "swap_space": 4.0,
     "cpu_offload_gb": 0.0
   },
+  "quantization": {
+    "awq": {
+      "ignore": [
+        "lm_head"
+      ],
+      "mappings": [
+        {
+          "smooth_layer": "re:^model\\.layers\\.[0-9]+\\.input_layernorm$",
+          "balance_layers": [
+            "re:^model\\.layers\\.[0-9]+\\.self_attn\\.q_proj$",
+            "re:^model\\.layers\\.[0-9]+\\.self_attn\\.k_proj$",
+            "re:^model\\.layers\\.[0-9]+\\.self_attn\\.v_proj$"
+          ]
+        },
+        {
+          "smooth_layer": "re:^model\\.layers\\.[0-9]+\\.self_attn\\.v_proj$",
+          "balance_layers": [
+            "re:^model\\.layers\\.[0-9]+\\.self_attn\\.o_proj$"
+          ]
+        },
+        {
+          "smooth_layer": "re:^model\\.layers\\.[0-9]+\\.post_attention_layernorm$",
+          "balance_layers": [
+            "re:^model\\.layers\\.[0-9]+\\.mlp\\.gate_proj$",
+            "re:^model\\.layers\\.[0-9]+\\.mlp\\.up_proj$"
+          ]
+        },
+        {
+          "smooth_layer": "re:^model\\.layers\\.[0-9]+\\.mlp\\.up_proj$",
+          "balance_layers": [
+            "re:^model\\.layers\\.[0-9]+\\.mlp\\.down_proj$"
+          ]
+        }
+      ]
+    }
+  },
   "prompt": {
     "add_target_lang_prompt": true
   }

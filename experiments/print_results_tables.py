@@ -18,30 +18,49 @@ def parse_score_file(path: Path):
 
 
 def collect_rows(exp_dir: Path):
-    epoch_dirs = sorted(
+    def lang_dirs_in(parent: Path):
+        return sorted([p for p in parent.iterdir() if p.is_dir() and "-" in p.name])
+
+    # Collect (epoch_name, lang_dir) pairs across supported layouts:
+    # 1) <exp>/<epoch>/<lang-pair> (numeric epoch)
+    # 2) <exp>/<lang-pair>
+    # 3) <exp>/<run-name>/<lang-pair> (e.g. tower1/en-de)
+    epoch_lang_dirs = []
+    numeric_epoch_dirs = sorted(
         [p for p in exp_dir.iterdir() if p.is_dir() and p.name.isdigit()],
         key=lambda p: int(p.name),
     )
-    if not epoch_dirs:
-        epoch_dirs = [exp_dir]
+    if numeric_epoch_dirs:
+        for epoch_dir in numeric_epoch_dirs:
+            direct_lang_dirs = lang_dirs_in(epoch_dir)
+            if direct_lang_dirs:
+                epoch_lang_dirs.extend((epoch_dir.name, lang_dir) for lang_dir in direct_lang_dirs)
+                continue
+            for child_dir in sorted([p for p in epoch_dir.iterdir() if p.is_dir()]):
+                nested_lang_dirs = lang_dirs_in(child_dir)
+                epoch_lang_dirs.extend((epoch_dir.name, lang_dir) for lang_dir in nested_lang_dirs)
+    else:
+        direct_lang_dirs = lang_dirs_in(exp_dir)
+        epoch_lang_dirs.extend((exp_dir.name, lang_dir) for lang_dir in direct_lang_dirs)
+        for child_dir in sorted([p for p in exp_dir.iterdir() if p.is_dir()]):
+            nested_lang_dirs = lang_dirs_in(child_dir)
+            epoch_lang_dirs.extend((child_dir.name, lang_dir) for lang_dir in nested_lang_dirs)
 
     rows = []
     metric_names = set()
-    for epoch_dir in epoch_dirs:
-        lang_dirs = sorted([p for p in epoch_dir.iterdir() if p.is_dir() and "-" in p.name])
-        for lang_dir in lang_dirs:
-            metric_scores = {}
-            for score_file in sorted(lang_dir.glob("*.score")):
-                metric_name = score_file.stem
-                metric_names.add(metric_name)
-                metric_scores[metric_name] = parse_score_file(score_file)
-            rows.append(
-                {
-                    "epoch": epoch_dir.name,
-                    "lang_pair": lang_dir.name,
-                    "metrics": metric_scores,
-                }
-            )
+    for epoch_name, lang_dir in epoch_lang_dirs:
+        metric_scores = {}
+        for score_file in sorted(lang_dir.glob("*.score")):
+            metric_name = score_file.stem
+            metric_names.add(metric_name)
+            metric_scores[metric_name] = parse_score_file(score_file)
+        rows.append(
+            {
+                "epoch": epoch_name,
+                "lang_pair": lang_dir.name,
+                "metrics": metric_scores,
+            }
+        )
     return rows, metric_names
 
 
