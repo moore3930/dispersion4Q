@@ -65,6 +65,13 @@ def _infer_model_name_from_dir(model_dir: str) -> str | None:
     return None
 
 
+def _is_gemma3_model(model_name: str | None) -> bool:
+    if not model_name:
+        return False
+    name = str(model_name).strip().lower()
+    return "gemma-3" in name or "gemma3" in name
+
+
 def _normalize_awq_mappings(raw_mappings: list[dict]) -> list[dict]:
     normalized = []
     for entry in raw_mappings:
@@ -222,6 +229,15 @@ def main(
     model_configs_dir: str = None,
 ):
     quantization_mode = _load_quantization_mode(quantization_config)
+    model_hint = model_name_for_profile or _infer_model_name_from_dir(model_dir)
+
+    if quantization_mode == "awq" and _is_gemma3_model(model_hint):
+        raise RuntimeError(
+            "AWQ quantization for Gemma 3 is disabled in this pipeline. "
+            "Please check this script/model instead: "
+            "https://huggingface.co/pytorch/gemma-3-12b-it-AWQ-INT4"
+        )
+
     if _is_quantized_model_ready(output_dir):
         print(f"Quantized model already exists at {output_dir}, skipping quantization.", flush=True)
         return
@@ -235,7 +251,7 @@ def main(
     if quantization_mode == "awq":
         awq_overrides, profile_path = _get_awq_overrides(
             model_dir=model_dir,
-            model_name_for_profile=model_name_for_profile,
+            model_name_for_profile=model_hint,
             model_configs_dir=model_configs_dir,
         )
         if awq_overrides:
